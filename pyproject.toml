@@ -7,13 +7,10 @@ name = "migreat"
 version = "0.1.0"
 requires-python = ">=3.12"
 license = "Apache-2.0"
-dependencies = ["psycopg[binary]>=3,<4", "PyYAML>=6,<7", "jsonschema>=4,<5"]
+dependencies = ["psycopg[binary]>=3,<4", "PyYAML>=6,<7"]
 
 [project.scripts]
 migreat = "migreat.cli:main"
 
 [tool.setuptools]
 packages = ["migreat"]
-
-[tool.setuptools.package-data]
-migreat = ["odcs-3.2.0.json"]
