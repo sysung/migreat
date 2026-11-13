@@ -1,35 +1,35 @@
-# migreat
+# Migreat
 
-A local PostgreSQL proof of concept. It compares one ODCS 3.2.0 table contract with the live schema and previews a single nullable `bigint` addition. Existing rows read `NULL` in the new column. Backfill is a follow-up.
+Migreat previews and fills one nullable bigint column in an existing PostgreSQL table from retained data in the same database. It targets small, paused daily batch releases.
 
-## Run locally
+## Install
 
-With Python 3.12, run these commands from the project root. Removing the generated `build/` directory prevents stale package files from entering the install.
+With Python 3.12, run from the project root:
 
 ```sh
 python3.12 -m venv .venv
 source .venv/bin/activate
-rm -rf ./build
 python -m pip install .
+migreat --help
 ```
 
-## Run with Docker
+For Docker, run `docker build -t migreat .` and `docker run --rm migreat --help`.
+
+## Backfill an existing table
+
+Pause the daily writer and wait for active runs to finish. Prepare the nullable destination column through your schema deployment process. Use a retained input table and keep it stable during the fill. Point `DATABASE_URL` at the intended database.
 
 ```sh
-docker build -t migreat .
-docker run --rm migreat --help
+migreat backfill plan tests/fixtures/orders-amount-cents.yaml
+migreat backfill apply tests/fixtures/orders-amount-cents.yaml
 ```
 
-Follow [Add a PostgreSQL column](docs/adding-a-column.md) to write an ODCS contract and run the migration locally or in Docker.
+Review the fresh preview and type `yes` to confirm. After verification, deploy the updated writer and resume the schedule. The [walkthrough](docs/backfill-orders.md) provides a disposable PostgreSQL example.
 
 ## Integration tests
 
-With Docker running and the virtual environment active:
+With Docker running and the installed CLI on PATH:
 
 ```sh
 python -m unittest discover -s tests -v
 ```
-
-The suite starts PostgreSQL 17.12 on a dynamically assigned localhost port, reseeds ten rows before each case, and removes the container on exit.
-
-The bundled JSON Schema comes from [ODCS v3.2.0](https://github.com/bitol-io/open-data-contract-standard/blob/v3.2.0/schema/odcs-json-schema-latest.json), licensed under Apache 2.0.

@@ -1,0 +1,7 @@
+database: orders_demo
+source: analytics.orders_input
+target: analytics.orders
+key: id
+column: amount_cents
+start: 1
+end: 10
