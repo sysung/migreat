@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python 3.12 and PostgreSQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install migreat
+        run: python -m pip install .
+      - name: Run PostgreSQL integration tests
+        run: python -m unittest discover -s tests -v
+
+  docker:
+    name: Docker build and CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: docker build -t migreat .
+      - name: Check CLI help
+        run: docker run --rm migreat --help
