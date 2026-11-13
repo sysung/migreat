@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!pyproject.toml
+!LICENSE
+!migreat/
+!migreat/**
+migreat/**/__pycache__/
