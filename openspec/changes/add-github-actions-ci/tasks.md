@@ -2,7 +2,7 @@
 
 ## 1. GitHub Actions CI
 
-- [ ] 1.1 Add the CI workflow for pull requests targeting `master` and pushes to `master`. Check that both events select the Python and Docker jobs.
+- [x] 1.1 Add the CI workflow for pull requests targeting `master` and pushes to `master`. Check that both events select the Python and Docker jobs.
 - [ ] 1.2 Configure the Python 3.12 install and PostgreSQL integration check. Verify package installation and the existing suite in the Python job logs.
 - [ ] 1.3 Configure the Docker build and help check. Verify that the image builds and the installed CLI prints help in the Docker job logs.
 
