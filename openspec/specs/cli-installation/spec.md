@@ -18,8 +18,14 @@ A fresh installation SHALL provide the distribution, Python import package, and 
 
 #### Scenario: Plan from the bundled test fixture
 
-- **WHEN** a developer runs `migreat backfill plan tests/fixtures/orders-amount-cents.yaml` against the documented PostgreSQL fixture
+- **WHEN** a developer runs `migreat plan tests/fixtures/orders-amount-cents.yaml` against the documented PostgreSQL fixture
 - **THEN** the installed CLI prints the scoped historical fill and the number of pending rows
+
+#### Scenario: Use top-level migration commands
+
+- **WHEN** the operator invokes `migreat --help`
+- **THEN** the migration commands are `plan` and `apply`
+- **AND** the former `backfill` and `cutover` command groups are rejected as unknown commands
 
 ### Requirement: Install the CLI from GitHub
 

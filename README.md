@@ -33,13 +33,13 @@ Migreat previews and fills one nullable column in an existing PostgreSQL table. 
 5. Preview the backfill.
 
    ```sh
-   migreat backfill plan tests/fixtures/orders-amount-cents.yaml
+   migreat plan tests/fixtures/orders-amount-cents.yaml
    ```
 
 6. Apply the backfill. Review the fresh preview and type `yes` to confirm.
 
    ```sh
-   migreat backfill apply tests/fixtures/orders-amount-cents.yaml
+   migreat apply tests/fixtures/orders-amount-cents.yaml
    ```
 
 7. Verify the backfill, then deploy the updated writer and resume the schedule.
@@ -78,63 +78,42 @@ fill:
   policy: transaction_timestamp
 ```
 
-1. Run `migreat backfill plan amount-dollars.yaml` to preview the SQL.
-2. Run `migreat backfill apply amount-dollars.yaml` to generate a fresh plan.
+1. Run `migreat plan amount-dollars.yaml` to preview the SQL.
+2. Run `migreat apply amount-dollars.yaml` to generate a fresh plan.
    Review the SQL and type `yes` to add and fill the column in one transaction.
 3. Verify the result, then deploy the updated writer and resume the schedule.
 
-## Plan a replacement table cutover
+## Add a column from compiled dbt models
 
-Create `orders-cutover.yaml` with the replacement schema and the retained fields
-that supply its historical values.
+Save the compiled PostgreSQL `manifest.json` for the deployed baseline and for
+the candidate. Use the same target database for both compilations. For example,
+the baseline model can select `id, amount_cents, discount_cents` from
+`analytics.orders_input` and the candidate can add
+`(amount_cents - COALESCE(discount_cents, 0))::numeric / 100 AS net_dollars`. Both versions must target
+the same table and read directly from the same schema-qualified source without
+filters, joins, or other row-shaping clauses.
 
-```yaml
-mode: full_refresh
-database: orders_demo
-old_table: analytics.orders
-replacement_table: analytics.orders_next
-snapshot: orders-snapshot-42
-reader_owner: data-platform
-freshness_seconds: 3600
-key: id
-columns:
-  id: {type: bigint, source: id}
-  amount_dollars: {type: numeric, source: amount_cents, divide_by: 100}
+Set `DATABASE_URL` to the live target PostgreSQL database. Choose the shared
+key and inclusive historical range. Pass the exact model ID from the manifest.
+
+```sh
+migreat plan --baseline deployed.json --candidate proposed.json \
+  --model model.shop.orders --key id --start 1 --end 10
+migreat apply --baseline deployed.json --candidate proposed.json \
+  --model model.shop.orders --key id --start 1 --end 10
 ```
 
-1. Run `migreat cutover plan orders-cutover.yaml` to see the proposed DDL,
-   historical projections, and review steps. The command exits nonzero until
-   evidence is supplied.
-2. Build the replacement and compare both outputs from the same input snapshot.
-   Review key coverage, duplicates, expected transformed values, and whether
-   readers can safely switch back.
-3. Record the observed results in `orders-evidence.yaml`. Replace the sample
-   fingerprint and timestamps with the plan's fingerprint and measured UTC
-   timestamps. Use the snapshot capture time for `snapshot_at` and the comparison
-   completion time for `compared_at`. Record actual comparison counts and rollback readiness.
+Calculations can use multiple retained fields, built-in scalar arithmetic,
+comparisons, casts, CASE, and COALESCE. PostgreSQL determines the result type
+and handles NULL inputs. A keyed fill needs one retained source row per
+historical target key. A constant or CURRENT_TIMESTAMP needs no source match.
+Time-dependent values are calculated in the apply transaction.
 
-   ```yaml
-   plan_sha256: "<Plan SHA-256 from the CLI>"
-   old_build_snapshot: orders-snapshot-42
-   replacement_build_snapshot: orders-snapshot-42
-   comparison_snapshot: orders-snapshot-42
-   snapshot_at: "2026-11-13T18:00:00Z"
-   compared_at: "2026-11-13T18:10:00Z"
-   missing_keys: 0
-   extra_keys: 0
-   duplicate_keys: 0
-   value_mismatches: 0
-   rollback_ready: true
-   ```
-
-4. Run `migreat cutover plan orders-cutover.yaml --evidence orders-evidence.yaml`.
-   A zero exit status means the supplied evidence meets the gates. The deployment
-   owner still verifies the live state and switches readers.
-
-The command works offline and leaves database writes to the deployment process.
-Full refresh is supported. Incremental, microbatch, and streaming declarations
-report unsupported. For original load timestamps, declare an authoritative
-retained timestamp as the source.
+The plan shows the added column and checks its expression and historical keys
+against PostgreSQL. If the checks pass, it shows the proposed SQL and bound
+values. Unsupported calculations are reported as blockers. Pause and drain the old writer before applying. Apply generates a
+fresh report and asks for literal `yes` before adding and filling the column.
+Run the updated dbt model after the migration succeeds.
 
 ## Run tests
 

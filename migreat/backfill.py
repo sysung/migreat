@@ -4,7 +4,6 @@ from datetime import datetime
 from decimal import Decimal, localcontext
 from pathlib import Path
 
-import psycopg
 import yaml
 from psycopg import sql
 
@@ -91,21 +90,16 @@ class Preview:
 
 
 def load_declaration(path: Path) -> Declaration | ColumnAddition:
-    data = yaml.load(path.read_text(), Loader=DeclarationLoader)
+    return parse_declaration(yaml.load(path.read_text(), Loader=DeclarationLoader))
+
+
+def parse_declaration(data) -> Declaration | ColumnAddition:
     fields = {"database", "target", "key", "column", "start", "end"}
     if not isinstance(data, dict) or data.keys() not in (fields | {"source"}, fields | {"fill"}):
         raise BackfillError("Declare only the fields database, target, key, column, start, and end with either source or fill.")
-    for field in ("database", "key", "column"):
-        if not isinstance(data[field], str) or not IDENTIFIER.fullmatch(data[field]):
-            raise BackfillError(f"Use a simple PostgreSQL identifier for {field}.")
+    validate_scope(data["database"], data["key"], data["column"], data["start"], data["end"])
     target = Table.parse(data["target"])
-    if data["key"] == data["column"]:
-        raise BackfillError("Use distinct key and value columns.")
     start, end = data["start"], data["end"]
-    if not (type(start) is int and type(end) is int and -(2**63) <= start <= end < 2**63):
-        raise BackfillError("Use ordered bigint bounds for start and end.")
-    if end - start + 1 > MAX_KEYS:
-        raise BackfillError(f"Limit the range to {MAX_KEYS} possible keys.")
     if "fill" not in data:
         source = Table.parse(data["source"])
         if source == target:
@@ -130,7 +124,19 @@ def load_declaration(path: Path) -> Declaration | ColumnAddition:
     return ColumnAddition(*scope, source, source_column, Decimal(multiplier))
 
 
-def _snapshot(connection, table, declaration, *, target, after_addition=False):
+def validate_scope(database, key, column, start, end):
+    for field, value in (("database", database), ("key", key), ("column", column)):
+        if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
+            raise BackfillError(f"Use a simple PostgreSQL identifier for {field}.")
+    if key == column:
+        raise BackfillError("Use distinct key and value columns.")
+    if not (type(start) is int and type(end) is int and -(2**63) <= start <= end < 2**63):
+        raise BackfillError("Use ordered bigint bounds for start and end.")
+    if end - start + 1 > MAX_KEYS:
+        raise BackfillError(f"Limit the range to {MAX_KEYS} possible keys.")
+
+
+def inspect_relation(connection, table):
     rows = connection.execute(
         """
         SELECT c.oid, c.relkind, c.relrowsecurity, c.relhasrules,
@@ -157,6 +163,27 @@ def _snapshot(connection, table, declaration, *, target, after_addition=False):
     columns = tuple(row[6:] for row in rows)
     if kind != "r" or any((rls, rules, inherits, triggers)):
         raise BackfillError(f"Unsupported relation {table}. Use an ordinary table without inheritance, policies, rules, or user triggers.")
+    constraints = tuple(connection.execute(
+        """
+        SELECT oid, contype, confupdtype, confrelid, pg_catalog.pg_get_constraintdef(oid)
+        FROM pg_catalog.pg_constraint
+        WHERE conrelid = %s OR (contype = 'f' AND confrelid = %s)
+        ORDER BY oid
+        """,
+        (oid, oid),
+    ).fetchall())
+    return Snapshot(oid, columns, constraints, ())
+
+
+def check_target_constraints(table, relation):
+    if any(kind == "f" and referenced == relation.oid and action in ("c", "n", "d")
+           for _, kind, action, referenced, _ in relation.constraints):
+        raise BackfillError(f"Unsupported cascading foreign key on {table}.")
+
+
+def _snapshot(connection, table, declaration, *, target, after_addition=False):
+    relation = inspect_relation(connection, table)
+    columns = relation.columns
     attributes = {name: (data_type, required, generated, identity)
                   for name, data_type, required, generated, identity, _ in columns}
     addition = isinstance(declaration, ColumnAddition)
@@ -174,18 +201,8 @@ def _snapshot(connection, table, declaration, *, target, after_addition=False):
             raise BackfillError(f"Column {table}.{name} must be {expected_type}.")
     if target and ((not absent and any(attributes[column][1:])) or any(col[3] for col in columns)):
         raise BackfillError(f"Use a nullable writable destination column and no generated target columns on {table}.")
-    constraints = tuple(connection.execute(
-        """
-        SELECT oid, contype, confupdtype, confrelid, pg_catalog.pg_get_constraintdef(oid)
-        FROM pg_catalog.pg_constraint
-        WHERE conrelid = %s OR (contype = 'f' AND confrelid = %s)
-        ORDER BY oid
-        """,
-        (oid, oid),
-    ).fetchall())
-    if target and any(kind == "f" and referenced == oid and action in ("c", "n", "d")
-                      for _, kind, action, referenced, _ in constraints):
-        raise BackfillError(f"Unsupported cascading foreign key on {table}.")
+    if target:
+        check_target_constraints(table, relation)
     key = sql.Identifier(declaration.key)
     values = connection.execute(
         sql.SQL("SELECT {key}, {value} FROM ONLY {table} WHERE {key} BETWEEN %s AND %s ORDER BY {key}, {value} LIMIT %s").format(
@@ -195,14 +212,15 @@ def _snapshot(connection, table, declaration, *, target, after_addition=False):
     ).fetchall()
     if len(values) > MAX_KEYS:
         raise BackfillError(f"Too many scoped rows in {table}.")
-    return Snapshot(oid, columns, constraints, tuple(values))
+    return Snapshot(relation.oid, columns, relation.constraints, tuple(values))
 
 
 def _inspect(connection, declaration):
     database = connection.execute("SELECT pg_catalog.current_database()").fetchone()[0]
     if database != declaration.database:
         raise BackfillError(f"Connected to database {database}, expected {declaration.database}.")
-    source = _snapshot(connection, declaration.source, declaration, target=False) if declaration.source else None
+    source = (_snapshot(connection, declaration.source, declaration, target=False)
+              if declaration.source else None)
     target = _snapshot(connection, declaration.target, declaration, target=True)
     addition = isinstance(declaration, ColumnAddition)
     if not target.values and not addition:
@@ -241,99 +259,3 @@ def _inspect(connection, declaration):
             blocked.append(f"Conflicting populated target value for key {key}.")
         seen.add(key)
     return Preview(source, target, pending, correct, tuple(blocked), tuple(expected))
-
-
-def column_addition_sql(declaration):
-    target = declaration.target.identifier()
-    column = sql.Identifier(declaration.column)
-    key = sql.Identifier(declaration.key)
-    add = sql.SQL("ALTER TABLE ONLY {} ADD COLUMN {} {}").format(
-        target, column, sql.SQL(declaration.column_type),
-    )
-    bounds = (declaration.start, declaration.end)
-    if declaration.source is None:
-        fill = sql.SQL("UPDATE ONLY {} AS dst SET {} = CURRENT_TIMESTAMP").format(target, column)
-        match = sql.SQL("")
-        params = bounds
-    else:
-        fill = sql.SQL("UPDATE ONLY {} AS dst SET {} = src.{}::numeric * %s::numeric FROM ONLY {} AS src").format(
-            target, column, sql.Identifier(declaration.source_column), declaration.source.identifier(),
-        )
-        match = sql.SQL(" AND dst.{key} = src.{key}").format(key=key)
-        params = (declaration.multiplier, *bounds)
-    fill += sql.SQL(" WHERE dst.{key} BETWEEN %s AND %s AND dst.{column} IS NULL").format(key=key, column=column)
-    return ((add, ()), (fill + match, params))
-
-
-def preview(connection, declaration):
-    with connection.transaction():
-        connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        connection.execute("SET LOCAL lock_timeout = '2s'")
-        connection.execute("SET LOCAL statement_timeout = '10s'")
-        return _inspect(connection, declaration)
-
-
-def apply(connection, declaration, reviewed):
-    if isinstance(declaration, ColumnAddition):
-        return _apply_column_addition(connection, declaration, reviewed)
-    with connection.transaction():
-        connection.execute("SET LOCAL lock_timeout = '2s'")
-        connection.execute("SET LOCAL statement_timeout = '10s'")
-        for table in sorted((declaration.source, declaration.target)):
-            mode = "SHARE" if table == declaration.source else "SHARE ROW EXCLUSIVE"
-            connection.execute(sql.SQL("LOCK TABLE ONLY {} IN " + mode + " MODE").format(table.identifier()))
-        if _inspect(connection, declaration) != reviewed:
-            raise BackfillError("Preview is stale. Run apply again to review the current data.")
-        if reviewed.blocked:
-            raise BackfillError("Resolve blocked rows before applying.")
-        key, column = map(sql.Identifier, (declaration.key, declaration.column))
-        result = connection.execute(
-            sql.SQL(
-                "UPDATE ONLY {target} AS dst SET {column} = src.{column} "
-                "FROM ONLY {source} AS src "
-                "WHERE dst.{key} = src.{key} AND dst.{key} BETWEEN %s AND %s "
-                "AND dst.{column} IS NULL"
-            ).format(target=declaration.target.identifier(), source=declaration.source.identifier(),
-                     key=key, column=column),
-            (declaration.start, declaration.end),
-        )
-        actual = _inspect(connection, declaration)
-        expected_keys = tuple(key for key, _ in reviewed.target.values)
-        if (result.rowcount != reviewed.pending or actual.pending or actual.blocked
-                or actual.source != reviewed.source
-                or actual.target.oid != reviewed.target.oid
-                or actual.target.columns != reviewed.target.columns
-                or actual.target.constraints != reviewed.target.constraints
-                or tuple(key for key, _ in actual.target.values) != expected_keys):
-            raise BackfillError("Post-update verification failed. The transaction was rolled back.")
-        return result.rowcount
-
-
-def _apply_column_addition(connection, declaration, reviewed):
-    with connection.transaction():
-        connection.execute("SET LOCAL lock_timeout = '2s'")
-        connection.execute("SET LOCAL statement_timeout = '10s'")
-        tables = [declaration.target]
-        if declaration.source is not None:
-            tables.append(declaration.source)
-        for table in sorted(tables):
-            mode = "ACCESS EXCLUSIVE" if table == declaration.target else "SHARE"
-            connection.execute(sql.SQL("LOCK TABLE ONLY {} IN " + mode + " MODE").format(table.identifier()))
-        if _inspect(connection, declaration) != reviewed:
-            raise BackfillError("Preview is stale. Run apply again to review the current data.")
-        if reviewed.blocked:
-            raise BackfillError("Resolve blocked rows before applying.")
-        expected = reviewed.expected
-        if declaration.source is None:
-            timestamp = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
-            expected = tuple((key, timestamp) for key, _ in reviewed.target.values)
-        (add, add_params), (fill, fill_params) = column_addition_sql(declaration)
-        connection.execute(add, add_params)
-        result = connection.execute(fill, fill_params)
-        target = _snapshot(connection, declaration.target, declaration, target=True, after_addition=True)
-        added = (declaration.column, declaration.column_type, False, "", "", None)
-        if (result.rowcount != reviewed.pending
-                or target != Snapshot(reviewed.target.oid, (*reviewed.target.columns, added),
-                                      reviewed.target.constraints, expected)):
-            raise BackfillError("Post-update verification failed. The transaction was rolled back.")
-        return result.rowcount
