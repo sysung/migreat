@@ -1,6 +1,6 @@
 # Migreat
 
-Migreat previews and fills one nullable bigint column in an existing PostgreSQL table from retained data in the same database. It targets small, paused daily batch releases.
+Migreat previews and fills one nullable column in an existing PostgreSQL table. It targets small, paused daily batch releases.
 
 ## Install
 
@@ -43,6 +43,45 @@ Migreat previews and fills one nullable bigint column in an existing PostgreSQL 
    ```
 
 7. Verify the backfill, then deploy the updated writer and resume the schedule.
+
+## Add and backfill a column
+
+Pause and drain the daily writer and point `DATABASE_URL` at the intended
+database. Declare a new nullable column and the historical range. For example,
+save this as `amount-dollars.yaml` to join on `id` and convert cents to dollars.
+
+```yaml
+database: orders_demo
+target: analytics.orders
+key: id
+column: amount_dollars
+start: 1
+end: 10
+fill:
+  policy: scale
+  source: analytics.orders_input
+  column: amount_cents
+  multiplier: "0.01"
+```
+
+For a timestamp column, save a declaration such as `orders-ds.yaml`.
+Scoped rows will receive the apply transaction's start time.
+
+```yaml
+database: orders_demo
+target: analytics.orders
+key: id
+column: ds
+start: 1
+end: 10
+fill:
+  policy: transaction_timestamp
+```
+
+1. Run `migreat backfill plan amount-dollars.yaml` to preview the SQL.
+2. Run `migreat backfill apply amount-dollars.yaml` to generate a fresh plan.
+   Review the SQL and type `yes` to add and fill the column in one transaction.
+3. Verify the result, then deploy the updated writer and resume the schedule.
 
 ## Plan a replacement table cutover
 
