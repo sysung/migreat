@@ -6,9 +6,9 @@ Migreat's CI verifies the checkout and Docker image. Users need a versioned pack
 
 ## What Changes
 
-- Publish a Python wheel and source distribution as GitHub Release assets from a version tag after package and platform checks pass.
+- Publish a Python wheel and source distribution as GitHub Release assets from a version tag after package checks pass.
 - Keep the distribution, import, and executable named `migreat`. Install from the versioned GitHub wheel URL because another project owns the PyPI name.
-- Document isolated CLI installs and version pinning, with the platforms verified for the release.
+- Document isolated CLI installs and version pinning.
 
 ## Capabilities
 
@@ -22,4 +22,4 @@ Migreat's CI verifies the checkout and Docker image. Users need a versioned pack
 
 ## Impact
 
-The change affects Python package metadata, GitHub Actions, GitHub release settings, release verification fixtures, and installation documentation.
+The change affects Python package metadata, GitHub Actions, GitHub release settings, and installation documentation.

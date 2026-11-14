@@ -18,7 +18,7 @@ A release SHALL publish the tested wheel and source distribution as public GitHu
 - **THEN** release validation fails before publishing
 
 #### Scenario: Block publication on verification failure
-- **WHEN** an artifact, platform smoke test, or PostgreSQL integration check fails
+- **WHEN** a package build or validation check fails
 - **THEN** publication is blocked
 
 ### Requirement: Rehearse publication checks
@@ -26,4 +26,4 @@ Maintainers SHALL be able to run the release build and verification without publ
 
 #### Scenario: Run a rehearsal
 - **WHEN** a maintainer starts a verification-only run
-- **THEN** the run reports the package and platform check results and creates no GitHub Release or public release assets
+- **THEN** the run reports the package check results and creates no GitHub Release or public release assets

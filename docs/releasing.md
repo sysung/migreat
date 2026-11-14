@@ -1,12 +1,11 @@
 # Release Migreat
 
 The release workflow builds the wheel and source distribution from the tagged
-commit. It verifies the installed CLI on Linux x64, macOS arm64 and Intel, and
-Windows x64 before publishing the files to GitHub Releases.
+commit. It records checksums and publishes the files to GitHub Releases.
 
 1. Set the version in `pyproject.toml` and merge the reviewed release commit
    into `master`. Run **Python package release** from the Actions tab on `master` and confirm the run
-   used that commit. Manual runs exercise the verification jobs and skip publication.
+   used that commit. Manual runs build the package and record its checksums and skip publication.
 2. Protect `v*` tags with GitHub tag rulesets. Restrict creation to release
    maintainers and restrict updates and deletions. Confirm the proposed tag
    is unused.
@@ -18,10 +17,9 @@ Windows x64 before publishing the files to GitHub Releases.
    git push origin refs/tags/v0.1.0
    ```
 
-4. Check the release workflow, including the jobs that install from the
-   public wheel URL. Confirm the release assets are the wheel, source
-   distribution, and `SHA256.json`. Record the release and workflow links,
-   commit, hashes, and platform results before announcing availability.
+4. Check the release workflow and confirm the public release has the wheel,
+   source distribution, and `SHA256.json`. If you want to try the download,
+   use the wheel URL from the release with the README install command.
 
 ## Recover an incomplete release
 
