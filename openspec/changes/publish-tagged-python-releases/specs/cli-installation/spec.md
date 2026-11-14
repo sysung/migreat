@@ -16,8 +16,3 @@ A fresh installation SHALL provide the distribution as `migreat` and the Python 
 
 - **WHEN** a developer runs `migreat backfill plan tests/fixtures/orders-amount-cents.yaml` against the documented PostgreSQL fixture
 - **THEN** the installed CLI prints the scoped historical fill and the number of pending rows
-
-#### Scenario: Apply using the installed CLI
-
-- **WHEN** an operator runs the installed CLI against a disposable PostgreSQL fixture on a supported target and confirms with `yes`
-- **THEN** the CLI reports a verified update and the scoped destination value matches the source
