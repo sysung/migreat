@@ -50,7 +50,7 @@ migreat backfill plan tests/fixtures/orders-amount-cents.yaml
 migreat backfill apply tests/fixtures/orders-amount-cents.yaml
 ```
 
-Review the fresh preview and type `yes` to confirm. After verification, deploy the updated writer and resume the schedule. The [walkthrough](docs/backfill-orders.md) provides a disposable PostgreSQL example.
+Review the fresh preview and type `yes` to confirm. After verification, deploy the updated writer and resume the schedule.
 
 ## Integration tests
 
