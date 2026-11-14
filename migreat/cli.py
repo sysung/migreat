@@ -7,19 +7,27 @@ import psycopg
 import yaml
 
 from .backfill import BackfillError, apply, load_declaration, preview
+from .cutover import plan as plan_cutover
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="migreat", description="Preview and apply a PostgreSQL backfill.")
+    parser = argparse.ArgumentParser(prog="migreat", description="Plan PostgreSQL table cutovers and run scoped backfills.")
     commands = parser.add_subparsers(dest="command", required=True)
     backfill = commands.add_parser("backfill", help="Fill historical values in an existing column.")
     actions = backfill.add_subparsers(dest="action", required=True)
     for action, description in (("plan", "Preview the fill without writes."), ("apply", "Review and apply the fill.")):
         command = actions.add_parser(action, help=description, description=description)
         command.add_argument("declaration", type=Path)
+    cutover = commands.add_parser("cutover", help="Review a replacement table cutover.")
+    cutover_actions = cutover.add_subparsers(dest="action", required=True)
+    cutover_plan = cutover_actions.add_parser("plan", help="Review SQL and assess supplied evidence.")
+    cutover_plan.add_argument("declaration", type=Path)
+    cutover_plan.add_argument("--evidence", type=Path)
     args = parser.parse_args()
 
     try:
+        if args.command == "cutover":
+            return plan_cutover(args.declaration, args.evidence)
         declaration = load_declaration(args.declaration)
         dsn = os.environ.get("DATABASE_URL")
         if not dsn:

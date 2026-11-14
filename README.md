@@ -44,6 +44,59 @@ Migreat previews and fills one nullable bigint column in an existing PostgreSQL 
 
 7. Verify the backfill, then deploy the updated writer and resume the schedule.
 
+## Plan a replacement table cutover
+
+Create `orders-cutover.yaml` with the replacement schema and the retained fields
+that supply its historical values.
+
+```yaml
+mode: full_refresh
+database: orders_demo
+old_table: analytics.orders
+replacement_table: analytics.orders_next
+snapshot: orders-snapshot-42
+reader_owner: data-platform
+freshness_seconds: 3600
+key: id
+columns:
+  id: {type: bigint, source: id}
+  amount_dollars: {type: numeric, source: amount_cents, divide_by: 100}
+```
+
+1. Run `migreat cutover plan orders-cutover.yaml` to see the proposed DDL,
+   historical projections, and review steps. The command exits nonzero until
+   evidence is supplied.
+2. Build the replacement and compare both outputs from the same input snapshot.
+   Review key coverage, duplicates, expected transformed values, and whether
+   readers can safely switch back.
+3. Record the observed results in `orders-evidence.yaml`. Replace the sample
+   fingerprint and timestamps with the plan's fingerprint and measured UTC
+   timestamps. Use the snapshot capture time for `snapshot_at` and the comparison
+   completion time for `compared_at`. Record actual comparison counts and rollback readiness.
+
+   ```yaml
+   plan_sha256: "<Plan SHA-256 from the CLI>"
+   old_build_snapshot: orders-snapshot-42
+   replacement_build_snapshot: orders-snapshot-42
+   comparison_snapshot: orders-snapshot-42
+   snapshot_at: "2026-11-13T18:00:00Z"
+   compared_at: "2026-11-13T18:10:00Z"
+   missing_keys: 0
+   extra_keys: 0
+   duplicate_keys: 0
+   value_mismatches: 0
+   rollback_ready: true
+   ```
+
+4. Run `migreat cutover plan orders-cutover.yaml --evidence orders-evidence.yaml`.
+   A zero exit status means the supplied evidence meets the gates. The deployment
+   owner still verifies the live state and switches readers.
+
+The command works offline and leaves database writes to the deployment process.
+Full refresh is supported. Incremental, microbatch, and streaming declarations
+report unsupported. For original load timestamps, declare an authoritative
+retained timestamp as the source.
+
 ## Run tests
 
 With Docker running and the installed CLI on PATH:
