@@ -29,7 +29,7 @@ def main() -> int:
             print(f"Database: {declaration.database}")
             print(f"Source: {declaration.source}")
             print(f"Target: {declaration.target}.{declaration.column}")
-            print(f"Range: {declaration.key} {declaration.start}–{declaration.end} (inclusive)")
+            print(f"Range: {declaration.key} {declaration.start}-{declaration.end} (inclusive)")
             print(f"Pending: {reviewed.pending}, already correct: {reviewed.correct}, blocked: {len(reviewed.blocked)}")
             if reviewed.blocked:
                 raise BackfillError(f"Resolve blocked rows. {reviewed.blocked[0]}")

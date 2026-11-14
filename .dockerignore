@@ -2,6 +2,7 @@
 !Dockerfile
 !pyproject.toml
 !LICENSE
+!README.md
 !migreat/
 !migreat/**
 migreat/**/__pycache__/
