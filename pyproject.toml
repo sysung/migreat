@@ -1,13 +1,18 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "migreat"
 version = "0.1.0"
+description = "Preview and apply a scoped PostgreSQL column backfill."
+readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
 dependencies = ["psycopg[binary]>=3,<4", "PyYAML>=6,<7"]
+
+[project.urls]
+Source = "https://github.com/sysung/migreat"
 
 [project.scripts]
 migreat = "migreat.cli:main"

@@ -6,7 +6,7 @@ Give developers one consistent name for installing, importing, and running migre
 
 ## Requirements
 
-### Requirement: Install and invoke migreat
+### Requirement: Install and invoke the backfill CLI
 
 A fresh installation SHALL provide the distribution, Python import package, and CLI executable under the name `migreat`.
 
@@ -16,7 +16,7 @@ A fresh installation SHALL provide the distribution, Python import package, and 
 - **THEN** the command succeeds and identifies itself as `migreat`
 - **AND** the environment can import `migreat`
 
-#### Scenario: Plan from the bundled contract
+#### Scenario: Plan from the bundled test fixture
 
-- **WHEN** a developer runs `migreat plan tests/fixtures/orders.yaml` against the PostgreSQL fixture
-- **THEN** the installed CLI validates the contract using its packaged ODCS schema and previews the nullable column addition
+- **WHEN** a developer runs `migreat backfill plan tests/fixtures/orders-amount-cents.yaml` against the documented PostgreSQL fixture
+- **THEN** the installed CLI prints the scoped historical fill and the number of pending rows
