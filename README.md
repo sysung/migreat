@@ -4,55 +4,47 @@ Migreat previews and fills one nullable bigint column in an existing PostgreSQL 
 
 ## Install
 
-Install the versioned wheel from [GitHub Releases](https://github.com/sysung/migreat/releases).
-The following commands use the planned first release, v0.1.0. Migreat requires
-Python 3.12 or later. The unrelated `migreat` package on PyPI belongs to another project.
+### From GitHub
 
-```sh
-uv tool install --python 3.12 "https://github.com/sysung/migreat/releases/download/v0.1.0/migreat-0.1.0-py3-none-any.whl"
-migreat --help
-```
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git.
+2. Install Migreat. For a backfill, replace `master` with the full SHA of a commit that passed CI. Use the same installation for preview and apply.
 
-With pipx and a compatible Python:
+   ```sh
+   uv tool install --python 3.12 "git+https://github.com/sysung/migreat.git@master"
+   ```
 
-```sh
-pipx install "https://github.com/sysung/migreat/releases/download/v0.1.0/migreat-0.1.0-py3-none-any.whl"
-```
+3. Run `migreat --help`. If your shell can't find `migreat`, run `uv tool update-shell` and reopen the terminal.
 
-With pip on macOS or Linux:
+### From a source checkout
 
-```sh
-python3.12 -m venv .venv
-.venv/bin/python -m pip install "https://github.com/sysung/migreat/releases/download/v0.1.0/migreat-0.1.0-py3-none-any.whl"
-.venv/bin/migreat --help
-```
+1. In your virtual environment, run `python -m pip install .`.
 
-With pip on Windows PowerShell:
+### With Docker
 
-```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\python.exe -m pip install "https://github.com/sysung/migreat/releases/download/v0.1.0/migreat-0.1.0-py3-none-any.whl"
-.venv\Scripts\migreat.exe --help
-```
-
-From a source checkout, run `python -m pip install .` in the virtual
-environment. For Docker, run `docker build -t migreat .` and
-`docker run --rm migreat --help`.
+1. Build the image with `docker build -t migreat .`.
+2. Run `docker run --rm migreat --help`.
 
 ## Backfill an existing table
 
-Pause the daily writer and wait for active runs to finish. Prepare the nullable destination column through your schema deployment process. Use a retained input table and keep it stable during the fill. Point `DATABASE_URL` at the intended database. If you installed from a release,
-download the [example declaration for v0.1.0](https://github.com/sysung/migreat/blob/v0.1.0/tests/fixtures/orders-amount-cents.yaml)
-once that tag is available. Review it and substitute its local path in the commands below.
+1. Pause the daily writer and wait for active runs to finish.
+2. Prepare the nullable destination column through your schema deployment process. Use a retained input table and keep it stable during the fill.
+3. Point `DATABASE_URL` at the intended database.
+4. Review the declaration. If you installed from GitHub, download the [example declaration](https://raw.githubusercontent.com/sysung/migreat/master/tests/fixtures/orders-amount-cents.yaml) and substitute its local path in the commands below. If you pinned the install to a commit, use the same SHA in the example URL.
+5. Preview the backfill.
 
-```sh
-migreat backfill plan tests/fixtures/orders-amount-cents.yaml
-migreat backfill apply tests/fixtures/orders-amount-cents.yaml
-```
+   ```sh
+   migreat backfill plan tests/fixtures/orders-amount-cents.yaml
+   ```
 
-Review the fresh preview and type `yes` to confirm. After verification, deploy the updated writer and resume the schedule.
+6. Apply the backfill. Review the fresh preview and type `yes` to confirm.
 
-## Integration tests
+   ```sh
+   migreat backfill apply tests/fixtures/orders-amount-cents.yaml
+   ```
+
+7. Verify the backfill, then deploy the updated writer and resume the schedule.
+
+## Run tests
 
 With Docker running and the installed CLI on PATH:
 
