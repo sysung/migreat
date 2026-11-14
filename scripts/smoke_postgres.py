@@ -1,6 +1,7 @@
 """Run a small, disposable PostgreSQL backfill through the installed CLI."""
 
 import argparse
+import csv
 import os
 import platform
 import socket
@@ -39,6 +40,12 @@ def server(bin_dir):
         root = Path(temporary)
         data = root / "data"
         suffix = ".exe" if os.name == "nt" else ""
+        if os.name == "nt":
+            # PostgreSQL drops administrator privileges before accessing the cluster.
+            identity = run("whoami", "/user", "/fo", "csv", "/nh",
+                           capture_output=True, text=True).stdout
+            _, sid = next(csv.reader(identity.splitlines()))
+            run("icacls", root, "/grant", f"*{sid}:(OI)(CI)M")
         run(bin_dir / f"initdb{suffix}", "-D", data, "-U", "postgres",
             "--auth=trust", "--encoding=UTF8", "--no-locale")
         with socket.socket() as sock:
