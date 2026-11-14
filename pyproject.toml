@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "migreat"
 version = "0.1.0"
-description = "Preview and apply a scoped PostgreSQL column backfill."
+description = "Plan and apply scoped PostgreSQL column migrations."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
-dependencies = ["psycopg[binary]>=3,<4", "PyYAML>=6,<7"]
+dependencies = ["psycopg[binary]>=3,<4", "PyYAML>=6,<7", "pglast>=7.22,<8"]
 
 [project.urls]
 Source = "https://github.com/sysung/migreat"

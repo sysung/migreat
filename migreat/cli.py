@@ -6,35 +6,48 @@ from pathlib import Path
 import psycopg
 import yaml
 
-from .backfill import BackfillError, ColumnAddition, apply, column_addition_sql, load_declaration, preview
-from .cutover import plan as plan_cutover
+from .apply import apply
+from .backfill import BackfillError, ColumnAddition, load_declaration
+from .dbt import DbtAddition, DbtInput, UnsupportedAddition, load_operation
+from .plan import preview
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="migreat", description="Plan PostgreSQL table cutovers and run scoped backfills.")
-    commands = parser.add_subparsers(dest="command", required=True)
-    backfill = commands.add_parser("backfill", help="Fill historical values in a PostgreSQL column.")
-    actions = backfill.add_subparsers(dest="action", required=True)
-    for action, description in (("plan", "Preview the fill without writes."), ("apply", "Review and apply the fill.")):
-        command = actions.add_parser(action, help=description, description=description)
-        command.add_argument("declaration", type=Path)
-    cutover = commands.add_parser("cutover", help="Review a replacement table cutover.")
-    cutover_actions = cutover.add_subparsers(dest="action", required=True)
-    cutover_plan = cutover_actions.add_parser("plan", help="Review SQL and assess supplied evidence.")
-    cutover_plan.add_argument("declaration", type=Path)
-    cutover_plan.add_argument("--evidence", type=Path)
+    parser = argparse.ArgumentParser(prog="migreat", description="Plan and apply scoped PostgreSQL migrations.")
+    commands = parser.add_subparsers(dest="action", required=True)
+    for action, description in (("plan", "Preview the change without writes."), ("apply", "Review and apply the change.")):
+        command = commands.add_parser(action, help=description, description=description)
+        command.add_argument("declaration", nargs="?", type=Path, help="YAML declaration")
+        command.add_argument("--baseline", type=Path, help="Deployed compiled dbt manifest")
+        command.add_argument("--candidate", type=Path, help="Proposed compiled dbt manifest")
+        command.add_argument("--model", help="Exact dbt model ID")
+        command.add_argument("--key", help="Historical match key")
+        command.add_argument("--start", type=int, help="Inclusive first key")
+        command.add_argument("--end", type=int, help="Inclusive last key")
     args = parser.parse_args()
 
+    dbt_options = (args.baseline, args.candidate, args.model, args.key, args.start, args.end)
+    uses_dbt = args.declaration is None
+    if ((uses_dbt and any(value is None for value in dbt_options))
+            or (not uses_dbt and any(value is not None for value in dbt_options))):
+        parser.error("Use a YAML declaration or all six dbt options.")
+
     try:
-        if args.command == "cutover":
-            return plan_cutover(args.declaration, args.evidence)
-        declaration = load_declaration(args.declaration)
+        declaration = load_operation(DbtInput(*dbt_options)) if uses_dbt else load_declaration(args.declaration)
         dsn = os.environ.get("DATABASE_URL")
         if not dsn:
             raise BackfillError("Set DATABASE_URL to the target PostgreSQL database.")
         with psycopg.connect(dsn, autocommit=True) as connection:
-            reviewed = preview(connection, declaration)
-            addition = isinstance(declaration, ColumnAddition)
+            try:
+                plan = preview(connection, declaration)
+            except (BackfillError, psycopg.Error):
+                if uses_dbt:
+                    print(f"+ {declaration.column}")
+                raise
+            reviewed = plan.inspection
+            addition = isinstance(declaration, (ColumnAddition, DbtAddition))
+            if uses_dbt:
+                print(f"+ {declaration.column} {reviewed.column_type}")
             print(f"Database: {declaration.database}")
             if declaration.source is not None:
                 print(f"Source: {declaration.source}")
@@ -42,14 +55,23 @@ def main() -> int:
             print(f"Range: {declaration.key} {declaration.start}-{declaration.end} (inclusive)")
             print(f"Pending: {reviewed.pending}, already correct: {reviewed.correct}, blocked: {len(reviewed.blocked)}")
             if addition:
-                if declaration.source is None:
+                if uses_dbt:
+                    if declaration.expression.transaction_time:
+                        print("Historical fill: evaluated at apply transaction start")
+                    elif declaration.source is None:
+                        print("Historical fill: same calculated value for every scoped row")
+                    if reviewed.example is not None:
+                        key, value = reviewed.example
+                        label = "Illustrative example" if reviewed.transaction_time else "Example"
+                        print(f"{label}: {declaration.key} {key} → {value if value is not None else 'NULL'}")
+                elif declaration.source is None:
                     print("Historical fill: apply transaction start time")
                 else:
                     print(f"Historical fill: {declaration.source_column} × {declaration.multiplier}")
                     if reviewed.expected:
                         key, value = reviewed.expected[0]
                         print(f"Example: {declaration.key} {key} → {value}")
-                for statement, parameters in column_addition_sql(declaration):
+                for statement, parameters in plan.statements:
                     print(statement.as_string(connection))
                     if parameters:
                         print("Parameters:", ", ".join(map(str, parameters)))
@@ -65,8 +87,12 @@ def main() -> int:
             if not confirmed:
                 print("\nCancelled.")
                 return 0
-            updated = apply(connection, declaration, reviewed)
+            updated = apply(connection, plan)
             print(f"Updated and verified {updated} rows.")
+    except UnsupportedAddition as error:
+        print(f"+ {error.column}")
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
     except psycopg.errors.LockNotAvailable:
         print("Error: Table lock timed out. Check that writers are paused and rerun.", file=sys.stderr)
         return 1

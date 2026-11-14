@@ -13,6 +13,8 @@ import psycopg
 import yaml
 
 from migreat import backfill
+from migreat.apply import apply
+from migreat.plan import preview
 
 PROMPT = b"Type yes to apply: "
 DECLARATION = {
@@ -93,7 +95,7 @@ class PostgresIntegrationTest(unittest.TestCase):
             ).fetchall()
 
     def cli_args(self, action):
-        return ["migreat", "backfill", action, str(self.declaration)]
+        return ["migreat", action, str(self.declaration)]
 
     def run_cli(self, action, reply=""):
         return subprocess.run(
@@ -220,18 +222,18 @@ class PostgresIntegrationTest(unittest.TestCase):
         before = self.state()
         declaration = backfill.load_declaration(self.declaration)
         with psycopg.connect(self.dsn, autocommit=True) as connection:
-            reviewed = backfill.preview(connection, declaration)
+            reviewed = preview(connection, declaration)
             inspect = backfill._inspect
 
-            def fail_verification(conn, operation):
-                result = inspect(conn, operation)
+            def fail_verification(conn, operation, **kwargs):
+                result = inspect(conn, operation, **kwargs)
                 if result.pending == 0:
                     raise backfill.BackfillError("Injected verification failure.")
                 return result
 
             with patch.object(backfill, "_inspect", side_effect=fail_verification):
                 with self.assertRaisesRegex(backfill.BackfillError, "Injected"):
-                    backfill.apply(connection, declaration, reviewed)
+                    apply(connection, reviewed)
         self.assertEqual(self.state(), before)
 
     def test_invalid_data_blocks_before_confirmation(self):
